@@ -1,0 +1,230 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://postgres:postgres@postgres/app" // hardcoded because it's an internal docker connection
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  password  String
+  name      String
+  createdAt DateTime  @default(now())
+  
+  // Monetization fields
+  subscriptionTier      String    @default("FREE") // FREE, PRO, ENTERPRISE
+  aiCredits             Int       @default(10) // AI generation credits
+  subscriptionExpiresAt DateTime? // For time-based subscriptions
+  stripeCustomerId      String?   // For payment integration
+  lifetimeCredits       Int       @default(0) // Total credits purchased/earned (for analytics)
+  
+  // UX Personalization (Phase 1 - Feature #6)
+  uxProfile             String    @default("novice") // novice, expert, minimalist, fast-publish, adhd-friendly
+  preferences           String?   @db.Text // JSON for flexible user preferences
+  
+  // Gamification (Phase 2 - Feature #7) - prepared for future
+  achievements          String?   @db.Text // JSON array of earned achievements
+  streakCount           Int       @default(0)
+  longestStreak         Int       @default(0)
+  lastActivityDate      DateTime?
+  totalWordsWritten     Int       @default(0)
+  
+  projects  Project[]
+  comments  Comment[]
+  versions  Version[]
+  voiceSamples VoiceSample[]
+}
+
+model Agent {
+  id          Int      @id @default(autoincrement())
+  name        String
+  type        String   // content, analytics, hr, design, finance, learning, automation
+  description String?  @db.Text
+  capabilities String? @db.Text // JSON array of capabilities
+  status      String   @default("active") // active, inactive, maintenance
+  createdAt   DateTime @default(now())
+  
+  projects    Project[]
+}
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  title       String
+  description String?
+  genre       String
+  language    String    @default("English")
+  status      String    @default("draft") // draft, in-progress, review, finalized
+  coverImage  String?
+  createdAt   DateTime  @default(now())
+  lastSavedAt DateTime? // Auto-save tracking (Phase 1 - Feature #5)
+  
+  // KDP Metadata fields
+  isbn            String?
+  authorName      String?
+  publisherName   String?
+  publicationDate DateTime?
+  categories      String?   @db.Text // JSON array of BISAC codes
+  keywords        String?   @db.Text // JSON array of up to 7 keywords
+  seriesName      String?
+  seriesNumber    Int?
+  price           Float?
+  currency        String?   @default("USD")
+  ageRangeMin     Int?
+  ageRangeMax     Int?
+  enableDRM       Boolean   @default(false)
+  
+  // Enhanced book structure metadata
+  structureType     String?  @default("linear") // linear, story_arc, framework, anthology
+  targetWordCount   Int?
+  currentWordCount  Int      @default(0)
+  readingLevel      Int?     // Target reading grade level (1-18)
+  tone              String?  @default("conversational") // formal, conversational, academic, casual
+  
+  // AI Generation Settings (Phase 1 - Feature #11) - prepared for future
+  aiGenerationSettings String? @db.Text // JSON for personalized AI controls
+  
+  // Voice cloning reference
+  voiceSampleId     Int?
+  
+  // Workflow and module categorization
+  workflowCategory  String?  @default("Content") // Content, Analytics, HR, Design, Finance, Learning, Automation
+  displayOrder      Int?     // Custom order for drag-and-drop
+  healthStatus      String   @default("active") // active, error, pending, warning
+  lastRunAt         DateTime?
+  agentId           Int?
+  
+  // Outline/structure
+  outline           String?  @db.Text // JSON outline structure
+  
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapters    Chapter[]
+  exports     Export[]
+  versions          Version[]
+  entities          BookEntity[]
+  voiceSamples      VoiceSample[]
+  marketingAssets   MarketingAsset[]
+  agent         Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+}
+
+model Chapter {
+  id        Int       @id @default(autoincrement())
+  projectId Int
+  title     String
+  content   String    @db.Text
+  order     Int
+  status    String    @default("draft") // draft, ai-generated, edited, finalized
+  createdAt DateTime  @default(now())
+  lastSavedAt DateTime? // Auto-save tracking (Phase 1 - Feature #5)
+  synopsis      String?  @db.Text // Brief summary for outline view
+  notes         String?  @db.Text // Author's notes, research links
+  wordCount     Int      @default(0)
+  
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  readabilityScore ReadabilityScore?
+  entitiesFirstMentioned BookEntity[]
+}
+
+model Template {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  category    String  // fiction, non-fiction, academic, etc.
+  styleJson   String  @db.Text // JSON string with style configuration
+  previewUrl  String?
+}
+
+model Export {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  format      String   // pdf, epub, mobi, html
+  fileUrl     String
+  status      String   @default("pending") // pending, processing, completed, failed
+  generatedAt DateTime @default(now())
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  chapterId Int
+  userId    Int
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Version {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  name        String
+  description String?
+  snapshot    String   @db.Text // JSON snapshot of entire project state
+  createdAt   DateTime @default(now())
+  createdBy   Int
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model BookEntity {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  type        String   // character, location, fact, timeline, event
+  name        String
+  description String?  @db.Text
+  attributes  String?  @db.Text // JSON with entity-specific attributes
+  firstMentionedChapterId Int?
+  createdAt   DateTime @default(now())
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  firstMentionedChapter Chapter? @relation(fields: [firstMentionedChapterId], references: [id], onDelete: SetNull)
+}
+
+model VoiceSample {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  projectId   Int?
+  name        String
+  content     String   @db.Text // Sample text
+  analysis    String?  @db.Text // JSON with style analysis (sentence structure, vocabulary, tone)
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ReadabilityScore {
+  id                Int      @id @default(autoincrement())
+  chapterId         Int      @unique
+  fleschReading     Float?   // Flesch Reading Ease (0-100, higher = easier)
+  fleschKincaid     Float?   // Flesch-Kincaid Grade Level
+  gradeLevel        Int?     // Estimated grade level
+  avgSentenceLength Float?
+  avgWordLength     Float?
+  wordCount         Int
+  calculatedAt      DateTime @default(now())
+  
+  chapter           Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+}
+
+model MarketingAsset {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  type        String   // social-post, email, amazon-description, press-release
+  platform    String?  // twitter, instagram, linkedin, email
+  content     String   @db.Text
+  metadata    String?  @db.Text // JSON with asset-specific metadata
+  generatedAt DateTime @default(now())
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
